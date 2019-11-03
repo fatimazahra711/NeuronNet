@@ -62,6 +62,44 @@ size_t Network::random_connect(const double &mean_deg, const double &mean_streng
     return num_links;
 }
 
+std::pair<size_t, double> Network::degree(const size_t& receiving_neuron) const
+{
+	linkmap::const_iterator iterator;
+    size_t nb_link(0);
+    double links_intensity(0.0);
+    
+	for (iterator = links.cbegin(); iterator != links.cend(); ++iterator) { 
+		
+       std::pair<size_t, size_t> receiv_neuron (iterator->first);
+       
+       if (receiv_neuron.first == receiving_neuron)  {
+		   
+       ++nb_link;
+       links_intensity += iterator->second;
+      
+		   }
+	   }  
+	return std::pair<size_t,double> (nb_link, links_intensity);
+}
+std::vector<std::pair<size_t, double> > Network::neighbors(const size_t &n) const
+{
+     std::vector<std::pair<size_t, double> > connecting_neurons;
+    
+        std::pair<size_t, size_t> receiv_neuron (n,0);
+         auto link = links.lower_bound(receiv_neuron);
+        size_t index (0);
+        while(link -> first.first == n and index < neurons.size())
+        {      
+              std::pair<size_t, size_t>  index_intensity(index, link->second);
+                connecting_neurons.push_back(index_intensity);
+                ++link;
+                ++index;
+        }
+                    
+
+    return connecting_neurons;
+}
+    
 std::vector<double> Network::potentials() const {
     std::vector<double> vals;
     for (size_t nn=0; nn<size(); nn++)
@@ -127,4 +165,50 @@ void Network::print_traj(const int time, const std::map<std::string, size_t> &_n
                 break;
             }
     (*_out) << std::endl;
+}
+
+std::set<size_t> Network::step(const std::vector<double>& thalamic_input)
+{
+std::set<size_t> indice_firing;
+std::vector<bool> bool_firing_neurons (neurons.size());
+double courant;
+double somme_inhib(0.0);
+double somme_exit(0.0);
+
+
+	for (size_t i(0); i<neurons.size(); ++i) {
+		
+		if (neurons[i].firing()) {
+			indice_firing.insert(i);
+			bool_firing_neurons.push_back(true);
+			neurons[i].reset();
+		} else {
+			bool_firing_neurons.push_back(false);
+		}
+			
+		for (auto const& neighbor : neighbors(i)) {
+				
+				if (bool_firing_neurons[neighbor.first]) {
+				
+					if (neurons[neighbor.first].firing()) {
+						somme_inhib+=neighbor.second;
+					} else {
+					somme_exit += neighbor.second;
+					}
+				}
+			}
+			
+		if (neurons[i].is_inhibitory()) {
+				courant = 0.4*thalamic_input[i] + somme_inhib + 0.5*somme_exit;
+			} else {
+				courant = thalamic_input[i] +somme_inhib + 0.5*somme_exit;
+			}
+			
+	neurons[i].input(courant);	
+	neurons[i].step();
+
+	}
+			
+return indice_firing;
+	
 }
